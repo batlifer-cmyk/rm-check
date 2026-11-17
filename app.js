@@ -6,7 +6,7 @@
 'use strict';
 
 var API = 'https://script.google.com/macros/s/AKfycbzTqqanJzTeEzMI506hD90hznJw5h54wjeUgBNzqZODvex7zuoyHcoke5hFgSBgIvaI2A/exec';
-var APP_VERSION = '1.4';
+var APP_VERSION = '1.5';
 
 var STATUS_LABEL = {
   ATTENDED: '출석',
@@ -362,7 +362,7 @@ function statusButtons(x) {
 function memoAskHTML(x) {
   var has = String(x._note || '').trim().length > 0;
   return '<div class="memo-ask' + (has ? ' done' : '') + '">' +
-    (has ? '✓ 수업 내용이 기록됐어요. 고칠 때만 아래에 적고 `저장`을 누르세요.'
+    (has ? '✓ 수업 내용이 기록됐어요. 고칠 때만 아래에 적고 저장을 누르세요.'
          : '⚠ 수업 내용(Note)을 꼭 입력해 주세요 — 다음 수업 준비와 학부모 안내에 그대로 쓰입니다.') +
     '</div>';
 }
@@ -388,7 +388,7 @@ function memoHTML(x) {
     memoAskHTML(x) +
     '<div class="prev">' + prevLine + '</div>' + chipHTML +
     '<div class="input-row">' +
-      '<textarea rows="1" data-memo="' + esc(x._key) + '" placeholder="한 줄 메모 (선택) — ' + esc((p.notePlaceholder || '').slice(0, 40)) + '">' + esc(x._note || '') + '</textarea>' +
+      '<textarea rows="1" data-memo="' + esc(x._key) + '" placeholder="한 줄 메모 — 수업 내용을 적어 주세요">' + esc(x._note || '') + '</textarea>' +
       '<button class="memo-save" data-act="saveNote" data-key="' + esc(x._key) + '">저장</button>' +
     '</div>' +
     '<div class="memo-foot">' +
