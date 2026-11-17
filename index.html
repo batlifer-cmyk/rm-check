@@ -135,6 +135,7 @@ main{padding:14px 16px 8px;max-width:640px;margin:0 auto}
   transition:transform .1s, background .15s;
 }
 .actions button:active{transform:scale(.97)}
+.actions.locked button,.actions button[disabled]{opacity:.45;pointer-events:none}
 .actions button[data-status="ATTENDED"]{background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 22%, transparent)}
 .actions button[data-status="NORMAL_CANCEL"]{background:var(--neutral-soft);color:var(--neutral)}
 .actions button[data-status="SAME_DAY_CANCEL"]{background:var(--warn-soft);color:var(--warn)}
@@ -334,6 +335,6 @@ main{padding:14px 16px 8px;max-width:640px;margin:0 auto}
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=1.1"></script>
+<script src="app.js?v=1.2"></script>
 </body>
 </html>

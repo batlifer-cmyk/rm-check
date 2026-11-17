@@ -6,7 +6,7 @@
 'use strict';
 
 var API = 'https://script.google.com/macros/s/AKfycbzTqqanJzTeEzMI506hD90hznJw5h54wjeUgBNzqZODvex7zuoyHcoke5hFgSBgIvaI2A/exec';
-var APP_VERSION = '1.0';
+var APP_VERSION = '1.2';
 
 var STATUS_LABEL = {
   ATTENDED: '출석',
@@ -39,6 +39,10 @@ var state = {
   lastSync: 0,
   viaCache: false
 };
+
+// 한 카드의 저장은 한 번에 하나만 나간다. 저장 중에 또 눌리면 마지막 선택만 남겨 두었다가
+// 앞선 응답의 rowNumber를 이어받아 UPDATE로 보낸다(새 행이 쌓이는 것을 막는 1차 방어).
+var saveQueue = {};   // occurrenceKey -> { busy: true, next: null|request, card }
 
 // ---------------------------------------------------------------- utils ---
 function $(id) { return document.getElementById(id); }
@@ -318,8 +322,8 @@ function cardHTML(x, kind) {
     body = '<div class="saved-line">' +
       '<span class="saved-pill" data-tone="' + (x._saving ? 'neutral' : tone) + '">' +
       (x._saving ? '저장 중…' : '✓ ' + esc(STATUS_LABEL[x._status] || '저장됨')) + '</span>' +
-      '<span class="saved-hint">' + (x._saving ? '' : esc(x.startTime || '')) + '</span>' +
-      '<button class="link-btn" data-act="reopen" data-key="' + esc(x._key) + '">변경</button>' +
+      '<span class="saved-hint">' + (x._saving ? '잠시만요' : esc(x.startTime || '')) + '</span>' +
+      (x._saving ? '' : '<button class="link-btn" data-act="reopen" data-key="' + esc(x._key) + '">변경</button>') +
       '</div>';
   } else if (x._error) {
     body = '<div class="fail-line">저장 실패 — ' + esc(x._error) +
@@ -345,8 +349,12 @@ function cardHTML(x, kind) {
 
 function statusButtons(x) {
   var keys = ['ATTENDED', 'NORMAL_CANCEL', 'SAME_DAY_CANCEL', 'NO_SHOW'];
-  return '<div class="actions">' + keys.map(function (k) {
-    return '<button data-act="status" data-status="' + k + '" data-key="' + esc(x._key) + '">' + STATUS_LABEL[k] + '</button>';
+  // 저장 중에는 버튼을 잠근다: 응답(rowNumber)이 오기 전에 두 번째 요청이 나가면
+  // 서버가 같은 수업을 새 행으로 또 만들 수 있다.
+  var lock = !!x._saving;
+  return '<div class="actions' + (lock ? ' locked' : '') + '"' + (lock ? ' aria-busy="true"' : '') + '>' + keys.map(function (k) {
+    return '<button data-act="status" data-status="' + k + '" data-key="' + esc(x._key) + '"' +
+      (lock ? ' disabled aria-disabled="true"' : '') + '>' + STATUS_LABEL[k] + '</button>';
   }).join('') + '</div>';
 }
 
@@ -436,6 +444,20 @@ function setOverride(key, patch) {
   state.overrides[key] = Object.assign({}, state.overrides[key] || {}, patch);
 }
 
+function overrideFor(key) { return state.overrides[key] || {}; }
+
+// 확인된 시트 행 번호: 방금 저장 응답이 최우선, 그다음 서버가 준 기존 기록.
+function rowNumberFor(key, card) {
+  return Number(overrideFor(key).rowNumber) || Number(card && card._row) || 0;
+}
+
+// 한 수업(카드)의 수정 이력은 같은 logId로 이어 남긴다. 서버가 준 기존 logId가 있으면 그대로 쓴다.
+function logIdFor(key, card) {
+  return overrideFor(key).logId ||
+    (card && card.existingRecord && card.existingRecord.logId) ||
+    ('c' + Date.now() + Math.floor(Math.random() * 1e4));
+}
+
 function applyStatus(card, status, opts) {
   var key = card._key;
   if (!card.studentConfirmed) {
@@ -444,12 +466,28 @@ function applyStatus(card, status, opts) {
     return;
   }
   var hours = Number((opts && opts.hours) || card.plannedHours || 1);
-  var classType = (opts && opts.classType) || card._classType || ''; 
+  var classType = (opts && opts.classType) || overrideFor(key).classType || card._classType || '';
   var note = (opts && typeof opts.note === 'string') ? opts.note : card._note || '';
 
   if (!classType) { openInfoSheet(card, status); return; }
 
-  setOverride(key, { status: status, saving: true, error: '' });
+  var req = { status: status, hours: hours, classType: classType, note: note };
+  var slot = saveQueue[key];
+  if (slot && slot.busy) {
+    // 저장이 오가는 중: 마지막 선택만 남겨 두고, 앞선 응답의 rowNumber로 이어서 UPDATE한다.
+    slot.next = { req: req, card: card };
+    setOverride(key, { status: status, saving: true, error: '' });
+    render();
+    return;
+  }
+  saveQueue[key] = { busy: true, next: null };
+  sendStatus(key, card, req);
+}
+
+function sendStatus(key, card, req) {
+  var rowNumber = rowNumberFor(key, card);
+  var logId = logIdFor(key, card);
+  setOverride(key, { status: req.status, saving: true, error: '', logId: logId });
   render();
 
   apiPost({
@@ -457,30 +495,55 @@ function applyStatus(card, status, opts) {
     student: card.student,
     lessonDate: card.lessonDate,
     startTime: card.startTime,
-    hours: hours,
-    status: status,
-    classType: classType,
-    note: note,
-    rowNumber: card._row || 0,
+    hours: req.hours,
+    status: req.status,
+    classType: req.classType,
+    note: req.note,
+    rowNumber: rowNumber,
     eventId: card.eventId || '',
     rawTitle: card.rawTitle || '',
     source: 'CALENDAR',
-    logId: 'c' + Date.now() + Math.floor(Math.random() * 1e4)
+    logId: logId
   }).then(function (res) {
-    setOverride(key, { status: status, saving: false, rowNumber: res.rowNumber, note: note, classType: classType });
+    var savedRow = Number(res.rowNumber) || rowNumber;
+    setOverride(key, { status: req.status, saving: false, rowNumber: savedRow, logId: res.logId || logId, note: req.note, classType: req.classType });
     state.reopened[key] = false;
-    markSavedLocally(card, res, status, classType, note);
+    markSavedLocally(card, res, req, savedRow, logId);
     state.openMemo[key] = true;
+    var next = shiftNextSave(key);
     render();
-    toast(STATUS_LABEL[status] + ' 저장됨');
+    if (next) sendStatus(key, next.card || card, next.req);
+    else toast(STATUS_LABEL[req.status] + ' 저장됨');
   }).catch(function (err) {
-    setOverride(key, { status: status, saving: false, error: err.message || '저장 실패' });
+    // 실패 시 대기 중인 선택은 버린다: 행 번호를 모르는 채 다시 보내면 중복 행이 생긴다.
+    var dropped = clearSaveQueue(key);
+    setOverride(key, { status: req.status, saving: false, error: err.message || '저장 실패' });
     render();
-    toast(err.message || '저장하지 못했습니다', true);
+    toast(dropped ? '저장하지 못했습니다. 최신 상태를 확인한 뒤 다시 눌러 주세요' : (err.message || '저장하지 못했습니다'), true);
   });
 }
 
-function markSavedLocally(card, res, status, classType, note) {
+// 앞선 저장이 끝났을 때: 대기 중인 다음 선택이 있으면 이어 쓰고, 없으면 잠금을 푼다.
+function shiftNextSave(key) {
+  var slot = saveQueue[key];
+  if (!slot) return null;
+  var next = slot.next;
+  slot.next = null;
+  if (!next) { slot.busy = false; return null; }
+  return next;
+}
+
+function clearSaveQueue(key) {
+  var slot = saveQueue[key];
+  if (!slot) return false;
+  var dropped = !!slot.next;
+  slot.next = null;
+  slot.busy = false;
+  return dropped;
+}
+
+function markSavedLocally(card, res, req, savedRow, logId) {
+  var status = req.status, classType = req.classType, note = req.note;
   var p = state.payload || {};
   var source = null;
   (p.todayLessons || []).forEach(function (x) { if (cardKey(x) === card._key) source = x; });
@@ -488,7 +551,8 @@ function markSavedLocally(card, res, status, classType, note) {
   if (source) {
     source.saved = true;
     source.existingRecord = {
-      rowNumber: res.rowNumber,
+      rowNumber: savedRow,
+      logId: logId,
       student: card.student,
       lessonDate: card.lessonDate,
       displayDate: md(card.lessonDate),
@@ -506,7 +570,8 @@ function markSavedLocally(card, res, status, classType, note) {
   }
   // keep the records tab in step without another round trip
   p.recentRecords = [{
-    rowNumber: res.rowNumber,
+    rowNumber: savedRow,
+    logId: logId,
     student: card.student,
     lessonDate: card.lessonDate,
     displayDate: md(card.lessonDate),
@@ -520,17 +585,19 @@ function markSavedLocally(card, res, status, classType, note) {
     statusLabel: STATUS_LABEL[status],
     noteMissing: !note,
     source: 'CALENDAR'
-  }].concat((p.recentRecords || []).filter(function (r) { return r.rowNumber !== res.rowNumber; }));
+  }].concat((p.recentRecords || []).filter(function (r) { return r.rowNumber !== savedRow; }));
   saveCache(p);
 }
 
 function saveMemo(card, text) {
   var note = String(text || '').trim();
-  if (!card._row) { toast('먼저 출결을 저장해 주세요'); return; }
+  if (card._saving) { toast('출결을 저장하는 중입니다. 잠시 뒤 다시 눌러 주세요'); return; }
+  var row = rowNumberFor(card._key, card);
+  if (!row) { toast('먼저 출결을 저장해 주세요'); return; }
   setOverride(card._key, { note: note });
   apiPost({
     action: 'saveNote',
-    rowNumber: card._row,
+    rowNumber: row,
     student: card.student,
     note: note,
     lessonDate: card.lessonDate,
@@ -539,11 +606,11 @@ function saveMemo(card, text) {
   }).then(function () {
     var p = state.payload || {};
     (p.recentRecords || []).forEach(function (r) {
-      if (r.rowNumber === card._row) { r.note = note; r.noteMissing = !note; }
+      if (r.rowNumber === row) { r.note = note; r.noteMissing = !note; }
     });
     var pool = [].concat(p.todayLessons || [], p.missingLessons || []);
     pool.forEach(function (x) {
-      if (x.existingRecord && x.existingRecord.rowNumber === card._row) {
+      if (x.existingRecord && x.existingRecord.rowNumber === row) {
         x.existingRecord.note = note;
         x.existingRecord.noteMissing = !note;
       }
