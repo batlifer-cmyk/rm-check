@@ -1,0 +1,8 @@
+# local only — never commit
+api/
+data/
+tokens.json
+rm_tokens_property.json
+teacher-links.md
+boot-*.json
+*.log

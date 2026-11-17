@@ -1,0 +1,16 @@
+{
+  "name": "RM 출결",
+  "short_name": "RM 출결",
+  "description": "라이언멤버스 강사 출결 기록",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#2f5bff",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
