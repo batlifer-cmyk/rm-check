@@ -6,7 +6,7 @@
 'use strict';
 
 var API = 'https://script.google.com/macros/s/AKfycbzTqqanJzTeEzMI506hD90hznJw5h54wjeUgBNzqZODvex7zuoyHcoke5hFgSBgIvaI2A/exec';
-var APP_VERSION = '1.2';
+var APP_VERSION = '1.3';
 
 var STATUS_LABEL = {
   ATTENDED: '출석',
@@ -315,6 +315,7 @@ function cardHTML(x, kind) {
   if (!x.studentConfirmed) badges += '<span class="badge warn">이름 확인</span>';
   if (kind === 'missing') badges += '<span class="badge warn">' + esc(md(x.lessonDate)) + ' 미입력</span>';
   if (kind === 'done' && x._status) badges += '<span class="badge ok">' + esc(STATUS_LABEL[x._status] || x._status) + '</span>';
+  if (kind === 'done' && x._status && !String(x._note || '').trim()) badges += '<span class="badge miss">⚠ 노트 미입력</span>';
 
   var body;
   if (x._saved && !x._reopened) {
@@ -358,6 +359,14 @@ function statusButtons(x) {
   }).join('') + '</div>';
 }
 
+function memoAskHTML(x) {
+  var has = String(x._note || '').trim().length > 0;
+  return '<div class="memo-ask' + (has ? ' done' : '') + '">' +
+    (has ? '✓ 수업 내용이 기록됐어요. 고칠 때만 아래에 적고 `저장`을 누르세요.'
+         : '⚠ 수업 내용(Note)을 꼭 입력해 주세요 — 다음 수업 준비와 학부모 안내에 그대로 쓰입니다.') +
+    '</div>';
+}
+
 function memoHTML(x) {
   var prev = prevLesson(x.student);
   var prevLine = prev
@@ -376,6 +385,7 @@ function memoHTML(x) {
   }).join('') + '</div>' : '';
 
   return '<div class="memo">' +
+    memoAskHTML(x) +
     '<div class="prev">' + prevLine + '</div>' + chipHTML +
     '<div class="input-row">' +
       '<textarea rows="1" data-memo="' + esc(x._key) + '" placeholder="한 줄 메모 (선택) — ' + esc((p.notePlaceholder || '').slice(0, 40)) + '">' + esc(x._note || '') + '</textarea>' +
@@ -420,6 +430,7 @@ function renderRecords() {
       '<div class="rec-row">' +
         '<span class="rec-name">' + esc(r.student) + '</span>' +
         '<span class="pill ' + esc(r.status) + '">' + esc(r.statusLabel || STATUS_LABEL[r.status] || r.status) + '</span>' +
+        (r.noteMissing ? '<span class="badge miss">⚠ 노트 미입력</span>' : '') +
         (r.classType ? '<span class="rec-hours">' + esc(r.classType) + '</span>' : '') +
         (note ? '' : '<button class="rec-more" data-act="recNote" data-row="' + r.rowNumber + '" data-student="' + esc(r.student) + '" data-date="' + esc(r.lessonDate) + '">＋ 메모</button>') +
       '</div>' +
@@ -513,7 +524,7 @@ function sendStatus(key, card, req) {
     var next = shiftNextSave(key);
     render();
     if (next) sendStatus(key, next.card || card, next.req);
-    else toast(STATUS_LABEL[req.status] + ' 저장됨');
+    else { focusMemo(key); toast(STATUS_LABEL[req.status] + ' 저장됨'); }
   }).catch(function (err) {
     // 실패 시 대기 중인 선택은 버린다: 행 번호를 모르는 채 다시 보내면 중복 행이 생긴다.
     var dropped = clearSaveQueue(key);
@@ -524,6 +535,21 @@ function sendStatus(key, card, req) {
 }
 
 // 앞선 저장이 끝났을 때: 대기 중인 다음 선택이 있으면 이어 쓰고, 없으면 잠금을 푼다.
+// 출결을 저장하면 열리는 메모창으로 바로 커서를 옮건다(수업 내용 입력 유도).
+function focusMemo(key) {
+  if (!state.openMemo[key]) return;
+  setTimeout(function () {
+    var list = document.querySelectorAll('textarea[data-memo]');
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].getAttribute('data-memo') !== key) continue;
+      try { list[i].focus({ preventScroll: true }); } catch (e) { list[i].focus(); }
+      var card = list[i].closest('.card');
+      if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+  }, 80);
+}
+
 function shiftNextSave(key) {
   var slot = saveQueue[key];
   if (!slot) return null;
@@ -705,6 +731,39 @@ function openGraduateSheet(card) {
   );
 }
 
+// 캘린더에 없는 수업(보강·대체·급결)을 시트에 바로 기록한다. source=MANUAL, reason=직접 추가.
+function openAddLessonSheet() {
+  var p = state.payload || {};
+  var types = (p.classTypes || []).map(function (c) { return c.value; });
+  var names = (p.studentSuggestions || []).slice(0, 300);
+  var statuses = ['ATTENDED', 'NORMAL_CANCEL', 'SAME_DAY_CANCEL', 'NO_SHOW'];
+  showSheet(
+    '<h3>오늘 수업 직접 추가</h3>' +
+    '<p class="sheet-note">캘린더에 없는 수업(보강·대체·급결)을 이 자리에서 바로 기록합니다. 시트와 같은 방식으로 저장돼요.</p>' +
+    '<div class="field"><label>학생 이름 *</label>' +
+      '<input id="aLessonStudent" type="text" list="addNameList" placeholder="이름을 입력하거나 골라 주세요" autocomplete="off">' +
+      '<datalist id="addNameList">' + names.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('') + '</datalist></div>' +
+    '<div class="field"><label>수업일</label>' +
+      '<input id="aLessonDate" type="date" value="' + esc(p.today || '') + '"></div>' +
+    '<div class="field"><label>시작 시간 (선택)</label>' +
+      '<input id="aLessonTime" type="time"></div>' +
+    '<div class="field"><label>수업 유형</label>' +
+      '<select id="aLessonType"><option value="">직전 유형 그대로</option>' +
+      types.map(function (t) { return '<option value="' + esc(t) + '">' + esc(t) + '</option>'; }).join('') + '</select></div>' +
+    '<div class="field"><label>수업 시간</label>' +
+      '<input id="aLessonHours" type="number" min="0.25" max="12" step="0.25" value="1"></div>' +
+    '<div class="field"><label>출결</label>' +
+      '<select id="aLessonStatus">' + statuses.map(function (k) {
+        return '<option value="' + k + '"' + (k === 'ATTENDED' ? ' selected' : '') + '>' + STATUS_LABEL[k] + '</option>';
+      }).join('') + '</select></div>' +
+    '<div class="field"><label>수업 내용(Note) *</label>' +
+      '<textarea id="aLessonNote" placeholder="예: 스몰톡, 현재완료 — 다음 수업 준비에 쓰입니다"></textarea></div>' +
+    '<button class="primary" data-act="doAddLesson">저장</button>' +
+    '<button class="secondary" data-act="close">취소</button>'
+  );
+  setTimeout(function () { var el = $('aLessonStudent'); if (el) el.focus(); }, 150);
+}
+
 function openNoteSheet(row, student, date) {
   showSheet(
     '<h3>' + esc(student) + ' 메모</h3>' +
@@ -756,6 +815,42 @@ document.addEventListener('click', function (ev) {
 
   switch (act) {
     case 'close': closeSheet(); break;
+    case 'addLesson': openAddLessonSheet(); break;
+    case 'doAddLesson': {
+      var aStudent = $('aLessonStudent') ? $('aLessonStudent').value.trim() : '';
+      var aDate = $('aLessonDate') ? $('aLessonDate').value : '';
+      var aTime = $('aLessonTime') ? $('aLessonTime').value : '';
+      var aType = $('aLessonType') ? $('aLessonType').value : '';
+      var aHours = $('aLessonHours') ? Number($('aLessonHours').value) : 1;
+      var aStatus = $('aLessonStatus') ? $('aLessonStatus').value : 'ATTENDED';
+      var aNote = $('aLessonNote') ? $('aLessonNote').value.trim() : '';
+      if (!aStudent) { toast('학생 이름을 입력해 주세요', true); return; }
+      if (!aDate) { toast('수업일을 골라 주세요', true); return; }
+      closeSheet();
+      toast('추가하는 중…');
+      apiPost({
+        action: 'saveLesson',
+        student: aStudent,
+        lessonDate: aDate,
+        startTime: aTime,
+        hours: aHours || 1,
+        status: aStatus,
+        classType: aType,
+        note: aNote,
+        rowNumber: 0,
+        eventId: '',
+        rawTitle: aStudent,
+        source: 'MANUAL',
+        reason: '직접 추가',
+        logId: 'm' + Date.now()
+      }).then(function (res) {
+        toast(STATUS_LABEL[aStatus] + ' 추가됨' + (res && res.rowNumber ? ' · ' + res.rowNumber + '행' : ''));
+        sync(true);
+      }).catch(function (err) {
+        toast(err.message || '수업을 추가하지 못했습니다', true);
+      });
+      break;
+    }
     case 'more': if (card) openMoreSheet(card); break;
     case 'status': if (card) applyStatus(card, t.dataset.status); break;
     case 'retry':
