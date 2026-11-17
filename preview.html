@@ -17,7 +17,7 @@
   <div class="hint">390 × 844 · iPhone 14 크기</div>
   <script>
     // The token comes from this page's own hash, so it never reaches the server.
-    document.getElementById('f').src = './' + location.hash;
+    document.getElementById('f').src = './?r=' + Date.now() + location.hash;
   </script>
 </body>
 </html>
