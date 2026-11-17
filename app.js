@@ -6,7 +6,7 @@
 'use strict';
 
 var API = 'https://script.google.com/macros/s/AKfycbzTqqanJzTeEzMI506hD90hznJw5h54wjeUgBNzqZODvex7zuoyHcoke5hFgSBgIvaI2A/exec';
-var APP_VERSION = '1.3';
+var APP_VERSION = '1.4';
 
 var STATUS_LABEL = {
   ATTENDED: '출석',
@@ -521,6 +521,7 @@ function sendStatus(key, card, req) {
     state.reopened[key] = false;
     markSavedLocally(card, res, req, savedRow, logId);
     state.openMemo[key] = true;
+    state.doneOpen = true;   // 저장한 카드의 메모창이 보이도록 '오늘 완료'를 펼친다
     var next = shiftNextSave(key);
     render();
     if (next) sendStatus(key, next.card || card, next.req);
