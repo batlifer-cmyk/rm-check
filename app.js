@@ -33,6 +33,7 @@ var state = {
   onlyMissing: false,
   doneOpen: false,
   openMemo: {},           // occurrenceKey -> true
+  wantMissing: false,     // #filter=missing jump once data is on screen
   reopened: {},           // occurrenceKey -> true (saved card showing buttons again)
   syncing: false,
   lastSync: 0,
@@ -151,15 +152,8 @@ function boot() {
   if (params.get('filter') === 'missing') {
     state.view = 'today';
     switchView('today');
-    setTimeout(function () {
-      var g = $('grpMissing');
-      if (g && !g.classList.contains('hidden')) {
-        g.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        toast('미입력 수업만 모아 보여드립니다');
-      } else {
-        toast('미입력 수업이 없습니다 👍');
-      }
-    }, 260);
+    state.wantMissing = true;
+    maybeRevealMissing();
   }
 }
 
@@ -223,6 +217,23 @@ function render(full) {
 
   $('emptyToday').classList.toggle('hidden', !!(lists.missing.length || lists.remaining.length || lists.done.length));
   renderRecords();
+  maybeRevealMissing();
+}
+
+// Opened from the 22:30 reminder (#filter=missing): jump to the missing group
+// once real data has been rendered, not on a fixed timer.
+function maybeRevealMissing() {
+  if (!state.wantMissing || !state.payload) return;
+  state.wantMissing = false;
+  setTimeout(function () {
+    var g = $('grpMissing');
+    if (g && !g.classList.contains('hidden')) {
+      g.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      toast('미입력 수업만 모아 보여드립니다');
+    } else {
+      toast('미입력 수업이 없습니다 👍');
+    }
+  }, 150);
 }
 
 function cardKey(item) { return item.occurrenceKey || item.id; }
@@ -550,6 +561,7 @@ var sheetStack = [];
 
 function showSheet(html) {
   $('sheetBody').innerHTML = html;
+  $('sheet').removeAttribute('aria-hidden');
   $('sheet').classList.add('on');
   $('scrim').classList.add('on');
   sheetStack.push(html);
@@ -557,6 +569,7 @@ function showSheet(html) {
 function closeSheet() {
   $('sheet').classList.remove('on');
   $('scrim').classList.remove('on');
+  $('sheet').setAttribute('aria-hidden', 'true');
   sheetStack = [];
 }
 
