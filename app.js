@@ -290,7 +290,10 @@ function cardHTML(x, kind) {
   if (x._classType) meta.push(esc(x._classType));
   if (x.plannedHours) meta.push(hoursLabel(x.plannedHours));
   var prev = prevLesson(x.student);
-  if (prev) meta.push('직전 ' + md(prev.d) + (prev.t ? ' · ' + esc(prev.t) : ''));
+  if (prev) {
+    var prevType = prev.t && prev.t !== x._classType ? ' · ' + esc(prev.t) : '';
+    meta.push('직전 ' + md(prev.d) + prevType);
+  }
   if (x.rescheduled) meta.push('일정변경됨');
 
   var badges = '';
