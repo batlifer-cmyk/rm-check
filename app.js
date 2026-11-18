@@ -6,7 +6,7 @@
 'use strict';
 
 var API = 'https://script.google.com/macros/s/AKfycbzTqqanJzTeEzMI506hD90hznJw5h54wjeUgBNzqZODvex7zuoyHcoke5hFgSBgIvaI2A/exec';
-var APP_VERSION = '1.6';
+var APP_VERSION = '1.6.1';
 
 var STATUS_LABEL = {
   ATTENDED: '출석',
@@ -354,7 +354,7 @@ function cardHTML(x, kind) {
 function savingNoticeHTML() {
   return '<div class="saving-note" role="status" aria-live="polite">' +
     '<b class="saving-title"><i class="saving-dot" aria-hidden="true"></i>저장 중…</b>' +
-    '<span class="saving-sub">곧 수업노트 입력칸이 열립니다. 잠시만 기다려 주세요</span>' +
+    '<span class="saving-sub">곧 수업노트 입력칸이 열립니다.<br>잠시만 기다려 주세요</span>' +
     '</div>';
 }
 
