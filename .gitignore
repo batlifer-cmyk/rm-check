@@ -7,3 +7,5 @@ teacher-links.md
 boot-*.json
 *.log
 preview-*.png
+
+outbound/

@@ -6,7 +6,7 @@
 'use strict';
 
 var API = 'https://script.google.com/macros/s/AKfycbzTqqanJzTeEzMI506hD90hznJw5h54wjeUgBNzqZODvex7zuoyHcoke5hFgSBgIvaI2A/exec';
-var APP_VERSION = '1.5';
+var APP_VERSION = '1.6';
 
 var STATUS_LABEL = {
   ATTENDED: '출석',
@@ -323,9 +323,10 @@ function cardHTML(x, kind) {
     body = '<div class="saved-line">' +
       '<span class="saved-pill" data-tone="' + (x._saving ? 'neutral' : tone) + '">' +
       (x._saving ? '저장 중…' : '✓ ' + esc(STATUS_LABEL[x._status] || '저장됨')) + '</span>' +
-      '<span class="saved-hint">' + (x._saving ? '잠시만요' : esc(x.startTime || '')) + '</span>' +
+      '<span class="saved-hint">' + (x._saving ? '' : esc(x.startTime || '')) + '</span>' +
       (x._saving ? '' : '<button class="link-btn" data-act="reopen" data-key="' + esc(x._key) + '">변경</button>') +
-      '</div>';
+      '</div>' +
+      (x._saving ? savingNoticeHTML() : '');
   } else if (x._error) {
     body = '<div class="fail-line">저장 실패 — ' + esc(x._error) +
       '<button data-act="retry" data-key="' + esc(x._key) + '">새로고침</button></div>' +
@@ -348,6 +349,15 @@ function cardHTML(x, kind) {
     '</div>' + body + memo + '</article>';
 }
 
+// 저장은 시트에 쓰는 데 4~5초 걸린다. 버튼을 잠근 채로 두면 "안 눌렸나?" 싶으므로
+// 버튼 아래에 무슨 일이 일어나는지(노트 입력칸이 곧 열린다)를 분명히 적어 준다.
+function savingNoticeHTML() {
+  return '<div class="saving-note" role="status" aria-live="polite">' +
+    '<b class="saving-title"><i class="saving-dot" aria-hidden="true"></i>저장 중…</b>' +
+    '<span class="saving-sub">곧 수업노트 입력칸이 열립니다. 잠시만 기다려 주세요</span>' +
+    '</div>';
+}
+
 function statusButtons(x) {
   var keys = ['ATTENDED', 'NORMAL_CANCEL', 'SAME_DAY_CANCEL', 'NO_SHOW'];
   // 저장 중에는 버튼을 잠근다: 응답(rowNumber)이 오기 전에 두 번째 요청이 나가면
@@ -356,7 +366,7 @@ function statusButtons(x) {
   return '<div class="actions' + (lock ? ' locked' : '') + '"' + (lock ? ' aria-busy="true"' : '') + '>' + keys.map(function (k) {
     return '<button data-act="status" data-status="' + k + '" data-key="' + esc(x._key) + '"' +
       (lock ? ' disabled aria-disabled="true"' : '') + '>' + STATUS_LABEL[k] + '</button>';
-  }).join('') + '</div>';
+  }).join('') + '</div>' + (lock ? savingNoticeHTML() : '');
 }
 
 function memoAskHTML(x) {

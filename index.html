@@ -137,6 +137,21 @@ main{padding:14px 16px 8px;max-width:640px;margin:0 auto}
 .actions button:active{transform:scale(.97)}
 .actions.locked button,.actions button[disabled]{opacity:.45;pointer-events:none}
 
+/* 저장 대기 안내 — 시트 저장에 4~5초 걸리는 동안 무슨 일이 일어나는지 보여 준다 */
+.saving-note{
+  margin-top:10px;padding:10px 12px;border-radius:11px;
+  background:var(--brand-soft);color:var(--brand);
+  line-height:1.45;word-break:keep-all;overflow-wrap:anywhere;
+}
+.saving-note .saving-title{display:block;font-size:13.5px;font-weight:800;letter-spacing:-.01em}
+.saving-note .saving-sub{display:block;margin-top:2px;font-size:12.5px;font-weight:700;color:var(--ink-2)}
+.saving-dot{
+  display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;
+  margin-right:7px;vertical-align:1px;animation:savingPulse 1s ease-in-out infinite;
+}
+@keyframes savingPulse{0%,100%{opacity:.25}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.saving-dot{animation:none;opacity:.8}}
+
 /* 직접 추가 */
 .add-lesson{
   display:flex;align-items:center;justify-content:center;width:100%;min-height:var(--tap);margin:16px 0 6px;
@@ -356,6 +371,6 @@ main{padding:14px 16px 8px;max-width:640px;margin:0 auto}
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=1.5"></script>
+<script src="app.js?v=1.6"></script>
 </body>
 </html>
